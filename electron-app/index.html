@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    &lt;meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'"&gt;
+    <title>Hosts Editor</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; }
+        textarea { 
+            width: 100%; 
+            height: 70vh; 
+            font-family: monospace;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hosts File Editor</h1>
+    <textarea id="hosts-content"></textarea>
+    <button id="save-button">保存更改</button>
+
+    <script src="./renderer.js"></script>
+</body>
+</html>
