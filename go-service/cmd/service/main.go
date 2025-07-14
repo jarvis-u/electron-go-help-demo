@@ -141,10 +141,7 @@ func handleRequest(conn net.Conn) {
 	}
 
 	switch buf[0] {
-	case 'g': // 获取hosts内容
-		content, _ := os.ReadFile("/etc/hosts")
-		conn.Write(content)
-	case 'u': // 更新hosts
+	case 'u': // 追加hosts内容
 		// 读取内容长度
 		lenBuf := make([]byte, 4)
 		conn.Read(lenBuf)
@@ -154,8 +151,22 @@ func handleRequest(conn net.Conn) {
 		content := make([]byte, length)
 		conn.Read(content)
 
-		// 写入/etc/hosts（需要sudo权限）
-		os.WriteFile("/etc/hosts", content, 0644)
+		// 追加到/etc/hosts（需要sudo权限）
+		f, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Printf("打开hosts文件失败: %v\n", err)
+			return
+		}
+		defer f.Close()
+
+		// 确保内容以换行符开头
+		if len(content) > 0 && content[0] != '\n' {
+			f.WriteString("\n")
+		}
+
+		if _, err = f.Write(content); err != nil {
+			fmt.Printf("追加hosts内容失败: %v\n", err)
+		}
 	}
 }
 
