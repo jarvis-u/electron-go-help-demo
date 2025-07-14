@@ -24,6 +24,10 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // 获取hosts-helper的绝对路径
+  const helperPath = path.join(__dirname, 'hosts-helper');
+  console.log("hosts-helper路径:", helperPath);
+  
   // 检查服务是否已安装
   const serviceInstalled = await checkServiceInstallation();
   if (!serviceInstalled) {
@@ -44,20 +48,19 @@ app.whenReady().then(async () => {
       if (password) {
         // 安全传递密码
         const escapedPassword = password.replace(/'/g, "'\\''");
-        const installScriptPath = path.join(__dirname, '../scripts/install-service.sh');
         
-        // 执行安装命令
-        const command = `echo '${escapedPassword}' | sudo -S bash "${installScriptPath}"`;
+        // 执行Go助手安装命令 - 使用绝对路径
+        const command = `echo '${escapedPassword}' | sudo -S "${helperPath}" install`;
         console.log("执行安装命令:", command);
         
         exec(command, (error, stdout, stderr) => {
           if (error) {
-            console.error('安装脚本执行失败:', error);
+            console.error('安装命令执行失败:', error);
             console.error('错误输出:', stderr);
             console.error('服务安装失败，退出应用');
             app.quit();
           } else {
-            console.log('安装脚本输出:', stdout);
+            console.log('安装命令输出:', stdout);
             console.log('服务安装成功');
             createWindow();
           }
@@ -188,19 +191,18 @@ async function installService() {
       if (password) {
         // 安全传递密码：转义特殊字符
         const escapedPassword = password.replace(/'/g, "'\\''");
-        const installScriptPath = path.join(__dirname, '../scripts/install-service.sh');
         
-        // 执行安装命令
-        const command = `echo '${escapedPassword}' | sudo -S bash "${installScriptPath}"`;
+        // 执行Go助手安装命令 - 使用绝对路径
+        const command = `echo '${escapedPassword}' | sudo -S "${helperPath}" install`;
         console.log("执行安装命令:", command);
         
         const child = exec(command, (error, stdout, stderr) => {
           if (error) {
-            console.error('安装脚本执行失败:', error);
+            console.error('安装命令执行失败:', error);
             console.error('stderr:', stderr);
             resolve({ success: false });
           } else {
-            console.log('安装脚本输出:', stdout);
+            console.log('安装命令输出:', stdout);
             console.log('服务安装成功');
             resolve({ success: true });
           }
