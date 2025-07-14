@@ -1,5 +1,4 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
-const { exec } = require('child_process')
 const path = require('path')
 const net = require('net')
 const sudo = require('sudo-prompt')
@@ -45,9 +44,17 @@ ipcMain.handle('append-to-hosts', async (event, content) => {
       throw new Error('服务安装失败')
     }
     
-    const recheck = await checkServiceInstallation()
-    if (!recheck) {
-      throw new Error('服务安装后仍然不可用')
+    // 服务安装后需要时间启动，重试检查
+    let serviceReady = false;
+    for (let i = 0; i < 5; i++) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      serviceReady = await checkServiceInstallation();
+      if (serviceReady) break;
+      console.log(`服务启动中... 重试 ${i+1}/5`);
+    }
+    
+    if (!serviceReady) {
+      throw new Error('服务安装后启动失败');
     }
   }
 
@@ -95,31 +102,31 @@ function checkServiceInstallation() {
 }
 
 function installService() {
-  const helperPath = path.join(__dirname, 'hosts-helper')
-  console.log("执行安装命令")
-  console.log("Helper路径:", helperPath)
-  
   return new Promise((resolve) => {
+    const helperPath = path.join(__dirname, 'hosts-helper');
+    console.log("执行安装命令");
+    console.log("Helper路径:", helperPath);
+    
     const options = {
       name: 'Hosts Helper Service Installation',
       icns: '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/BookmarkIcon.icns',
       env: { PATH: process.env.PATH }
-    }
+    };
     
-    const command = `"${helperPath}" install`
-    console.log("执行命令:", command)
+    const command = `"${helperPath}" install`;
+    console.log("执行命令:", command);
     
     sudo.exec(command, options, (error, stdout, stderr) => {
-      console.log('stdout:', stdout)
-      console.log('stderr:', stderr)
+      console.log('stdout:', stdout);
+      console.log('stderr:', stderr);
       
       if (error) {
-        console.error('安装失败:', error.message)
-        resolve({ success: false, error: error.message })
+        console.error('安装失败:', error.message);
+        resolve({ success: false, error: error.message });
       } else {
-        console.log('安装成功')
-        resolve({ success: true })
+        console.log('安装成功');
+        resolve({ success: true });
       }
-    })
-  })
+    });
+  });
 }
