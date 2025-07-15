@@ -25,8 +25,7 @@ app.whenReady().then(() => {
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-  
-  // 添加命令输入对话框处理器
+
   ipcMain.handle('open-command-dialog', async (event) => {
     console.log("打开命令输入对话框")
     
@@ -60,8 +59,6 @@ app.whenReady().then(() => {
   })
 })
 
-// 删除重复的app.whenReady回调
-
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit()
 })
@@ -78,8 +75,7 @@ ipcMain.handle('append-to-hosts', async (event, content) => {
     if (!installResult.success) {
       throw new Error('服务安装失败')
     }
-    
-    // 服务安装后需要时间启动，重试检查
+
     let serviceReady = false;
     for (let i = 0; i < 5; i++) {
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -134,8 +130,7 @@ ipcMain.handle('sudo-command', async (event, command) => {
     if (!installResult.success) {
       throw new Error('服务安装失败')
     }
-    
-    // 服务安装后需要时间启动，增加重试次数和间隔
+
     let serviceReady = false;
     for (let i = 0; i < 10; i++) { // 增加到10次重试
       await new Promise(resolve => setTimeout(resolve, 1000)); // 增加到1秒间隔
@@ -171,23 +166,20 @@ ipcMain.handle('sudo-command', async (event, command) => {
     client.on('data', (data) => {
       resultBuffer = Buffer.concat([resultBuffer, data])
       
-      // 循环处理直到没有足够数据
+
       while (true) {
-        // 如果结果长度未知，但缓冲区有足够数据读取长度
         if (resultLength === -1 && resultBuffer.length >= 4) {
           resultLength = resultBuffer.readUInt32BE(0)
           resultBuffer = resultBuffer.slice(4)
         }
-        
-        // 如果已知长度且有足够数据读取结果
+
         if (resultLength !== -1 && resultBuffer.length >= resultLength) {
           const result = resultBuffer.slice(0, resultLength).toString()
           resolve({ stdout: result, stderr: '' })
           client.end()
           return
         }
-        
-        // 如果没有足够数据，等待更多数据
+
         break;
       }
     })

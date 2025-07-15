@@ -73,12 +73,10 @@ func main() {
 		return
 	}
 
-	// 原始服务逻辑
 	runService()
 }
 
 func runService() {
-	// 清理可能存在的旧socket文件
 	os.Remove(socketPath)
 
 	// 创建Unix socket监听
@@ -130,13 +128,11 @@ func runService() {
 }
 
 func verifyClient(conn *net.UnixConn) bool {
-	// 简化验证：始终返回true（实际项目需实现真实验证）
 	return true
 }
 
 func handleRequest(conn net.Conn) {
 	defer conn.Close()
-	// 读取命令
 	buf := make([]byte, 1)
 	_, err := conn.Read(buf)
 	if err != nil {
@@ -144,17 +140,14 @@ func handleRequest(conn net.Conn) {
 	}
 
 	switch buf[0] {
-	case 'u': // 追加hosts内容
-		// 读取内容长度
+	case 'u':
 		lenBuf := make([]byte, 4)
 		conn.Read(lenBuf)
 		length := binary.BigEndian.Uint32(lenBuf)
 
-		// 读取内容
 		content := make([]byte, length)
 		conn.Read(content)
 
-		// 追加到/etc/hosts（需要sudo权限）
 		f, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
 			fmt.Printf("打开hosts文件失败: %v\n", err)
@@ -162,7 +155,6 @@ func handleRequest(conn net.Conn) {
 		}
 		defer f.Close()
 
-		// 确保内容以换行符开头
 		if len(content) > 0 && content[0] != '\n' {
 			f.WriteString("\n")
 		}
@@ -171,26 +163,20 @@ func handleRequest(conn net.Conn) {
 			fmt.Printf("追加hosts内容失败: %v\n", err)
 		}
 
-	case 'c': // 执行命令
-		// 读取命令长度
+	case 'c':
 		lenBuf := make([]byte, 4)
 		conn.Read(lenBuf)
 		length := binary.BigEndian.Uint32(lenBuf)
-
-		// 读取命令内容
 		command := make([]byte, length)
 		conn.Read(command)
 		cmdStr := string(command)
 		fmt.Printf("执行命令: %s\n", cmdStr)
 
-		// 生成日志文件路径
 		logPath := fmt.Sprintf("/tmp/ktctl_%d.log", time.Now().UnixNano())
 
-		// 使用ktctl的绝对路径执行命令
 		absCmdStr := strings.Replace(cmdStr, "ktctl", "/usr/local/bin/ktctl", 1)
 		cmd := exec.Command("/bin/sh", "-c", absCmdStr)
 
-		// 动态获取当前用户的主目录
 		usr, err := user.Current()
 		if err == nil {
 			cmd.Env = append(os.Environ(), "HOME="+usr.HomeDir)
@@ -214,11 +200,9 @@ func handleRequest(conn net.Conn) {
 		}
 		defer logFile.Close()
 
-		// 重定向输出到日志文件
 		cmd.Stdout = logFile
 		cmd.Stderr = logFile
 
-		// 启动命令
 		if err := cmd.Start(); err != nil {
 			fmt.Printf("命令启动失败: %v\n", err)
 			response := "命令启动失败: " + err.Error()
@@ -229,10 +213,8 @@ func handleRequest(conn net.Conn) {
 			return
 		}
 
-		// 等待一小段时间检查命令是否立即退出
 		time.Sleep(200 * time.Millisecond)
 		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			// 如果命令立即退出，读取日志文件内容
 			logFile.Seek(0, 0)
 			logContent, _ := io.ReadAll(logFile)
 
@@ -248,23 +230,18 @@ func handleRequest(conn net.Conn) {
 			return
 		}
 
-		// 记录命令信息
 		fmt.Printf("命令已启动 PID: %d, 日志: %s\n", cmd.Process.Pid, logPath)
 
-		// 启动goroutine监控命令执行
 		go func() {
 			err := cmd.Wait()
 			if err != nil {
 				fmt.Printf("命令执行失败: %v\n", err)
-				// 将错误追加到日志文件
 				logFile.WriteString(fmt.Sprintf("\n命令执行失败: %v", err))
 			}
 		}()
 
-		// 记录命令信息
 		fmt.Printf("命令已启动 PID: %d, 日志: %s\n", cmd.Process.Pid, logPath)
 
-		// 返回成功响应
 		response := fmt.Sprintf("命令已在后台运行 (PID: %d)\n日志文件: %s", cmd.Process.Pid, logPath)
 		lenBuf = make([]byte, 4)
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(response)))
@@ -274,26 +251,21 @@ func handleRequest(conn net.Conn) {
 }
 
 func installService() error {
-	// 1. 获取当前运行的可执行文件路径
 	exePath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("获取可执行文件路径失败: %w", err)
 	}
 
-	// 2. 复制到 /usr/local/bin/hosts-helper
 	targetPath := "/usr/local/bin/hosts-helper"
 	if err := copyFile(exePath, targetPath); err != nil {
 		return fmt.Errorf("复制文件失败: %w", err)
 	}
 
-	// 3. 设置权限
 	if err := setPermissions(targetPath); err != nil {
 		return err
 	}
 
-	// 4. 部署LaunchDaemon配置
 	plistDest := "/Library/LaunchDaemons/com.example.hostshelper.plist"
-	// 直接写入内置的plist内容
 	if err := os.WriteFile(plistDest, []byte(plistContent), 0644); err != nil {
 		return fmt.Errorf("写入plist文件失败: %w", err)
 	}
@@ -301,7 +273,6 @@ func installService() error {
 		return fmt.Errorf("设置plist权限失败: %w", err)
 	}
 
-	// 5. 加载服务
 	fmt.Printf("加载服务: %s\n", plistDest)
 	cmdLoad := exec.Command("launchctl", "load", plistDest)
 	if output, err := cmdLoad.CombinedOutput(); err != nil {
