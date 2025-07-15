@@ -8,7 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
+	"strings"
 	"syscall"
+	"time"
 )
 
 const socketPath = "/var/run/com.example.hostshelper.sock"
@@ -19,24 +22,24 @@ const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <dict>
     <key>Label</key>
     <string>com.example.hostshelper</string>
-    
+
     <key>ProgramArguments</key>
     <array>
         <string>/usr/local/bin/hosts-helper</string>
     </array>
-    
+
     <key>RunAtLoad</key>
     <true/>
-    
+
     <key>KeepAlive</key>
     <true/>
-    
+
     <key>StandardOutPath</key>
     <string>/var/log/hosts-helper.log</string>
-    
+
     <key>StandardErrorPath</key>
     <string>/var/log/hosts-helper-error.log</string>
-    
+
     <key>Sockets</key>
     <dict>
         <key>HostsHelperSocket</key>
@@ -47,13 +50,13 @@ const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
             <integer>384</integer> <!-- 0600 permissions in decimal -->
         </dict>
     </dict>
-    
+
     <key>UserName</key>
     <string>root</string>
-    
+
     <key>GroupName</key>
     <string>wheel</string>
-    
+
     <key>SessionCreate</key>
     <true/>
 </dict>
@@ -167,6 +170,106 @@ func handleRequest(conn net.Conn) {
 		if _, err = f.Write(content); err != nil {
 			fmt.Printf("追加hosts内容失败: %v\n", err)
 		}
+
+	case 'c': // 执行命令
+		// 读取命令长度
+		lenBuf := make([]byte, 4)
+		conn.Read(lenBuf)
+		length := binary.BigEndian.Uint32(lenBuf)
+
+		// 读取命令内容
+		command := make([]byte, length)
+		conn.Read(command)
+		cmdStr := string(command)
+		fmt.Printf("执行命令: %s\n", cmdStr)
+
+		// 生成日志文件路径
+		logPath := fmt.Sprintf("/tmp/ktctl_%d.log", time.Now().UnixNano())
+
+		// 使用ktctl的绝对路径执行命令
+		absCmdStr := strings.Replace(cmdStr, "ktctl", "/usr/local/bin/ktctl", 1)
+		cmd := exec.Command("/bin/sh", "-c", absCmdStr)
+
+		// 动态获取当前用户的主目录
+		usr, err := user.Current()
+		if err == nil {
+			cmd.Env = append(os.Environ(), "HOME="+usr.HomeDir)
+			fmt.Println("设置HOME环境变量:", usr.HomeDir)
+		} else {
+			fmt.Println("无法获取用户主目录:", err)
+		}
+
+		fmt.Println("转换后的命令:", absCmdStr)
+
+		// 创建日志文件
+		logFile, err := os.Create(logPath)
+		if err != nil {
+			fmt.Printf("创建日志文件失败: %v\n", err)
+			response := "命令启动失败: 无法创建日志文件"
+			lenBuf = make([]byte, 4)
+			binary.BigEndian.PutUint32(lenBuf, uint32(len(response)))
+			conn.Write(lenBuf)
+			conn.Write([]byte(response))
+			return
+		}
+		defer logFile.Close()
+
+		// 重定向输出到日志文件
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+
+		// 启动命令
+		if err := cmd.Start(); err != nil {
+			fmt.Printf("命令启动失败: %v\n", err)
+			response := "命令启动失败: " + err.Error()
+			lenBuf = make([]byte, 4)
+			binary.BigEndian.PutUint32(lenBuf, uint32(len(response)))
+			conn.Write(lenBuf)
+			conn.Write([]byte(response))
+			return
+		}
+
+		// 等待一小段时间检查命令是否立即退出
+		time.Sleep(200 * time.Millisecond)
+		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+			// 如果命令立即退出，读取日志文件内容
+			logFile.Seek(0, 0)
+			logContent, _ := io.ReadAll(logFile)
+
+			fmt.Printf("命令立即退出，退出码: %d\n", cmd.ProcessState.ExitCode())
+			response := fmt.Sprintf("命令执行失败 (退出码: %d)\n日志: %s",
+				cmd.ProcessState.ExitCode(),
+				strings.ReplaceAll(string(logContent), "\n", " "))
+
+			lenBuf = make([]byte, 4)
+			binary.BigEndian.PutUint32(lenBuf, uint32(len(response)))
+			conn.Write(lenBuf)
+			conn.Write([]byte(response))
+			return
+		}
+
+		// 记录命令信息
+		fmt.Printf("命令已启动 PID: %d, 日志: %s\n", cmd.Process.Pid, logPath)
+
+		// 启动goroutine监控命令执行
+		go func() {
+			err := cmd.Wait()
+			if err != nil {
+				fmt.Printf("命令执行失败: %v\n", err)
+				// 将错误追加到日志文件
+				logFile.WriteString(fmt.Sprintf("\n命令执行失败: %v", err))
+			}
+		}()
+
+		// 记录命令信息
+		fmt.Printf("命令已启动 PID: %d, 日志: %s\n", cmd.Process.Pid, logPath)
+
+		// 返回成功响应
+		response := fmt.Sprintf("命令已在后台运行 (PID: %d)\n日志文件: %s", cmd.Process.Pid, logPath)
+		lenBuf = make([]byte, 4)
+		binary.BigEndian.PutUint32(lenBuf, uint32(len(response)))
+		conn.Write(lenBuf)
+		conn.Write([]byte(response))
 	}
 }
 

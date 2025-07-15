@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const hostsTextarea = document.getElementById('hosts-content');
     const saveButton = document.getElementById('save-button');
+    const debugButton = document.getElementById('debug-button');
 
     // 初始化textarea为空（不再加载hosts）
     hostsTextarea.value = '';
@@ -11,6 +12,34 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('保存按钮点击');
         const newContent = hostsTextarea.value;
         await saveHosts();
+    });
+
+    // 本地调试按钮点击事件
+    debugButton.addEventListener('click', async () => {
+        console.log('本地调试按钮点击');
+        
+        try {
+            // 通过IPC请求打开命令输入对话框
+            const command = await window.hostsAPI.openCommandDialog();
+            
+            if (!command) {
+                console.log('用户取消了命令输入');
+                return;
+            }
+            
+            console.log('用户输入的命令:', command);
+            
+            if (!command.trim()) {
+                alert('命令不能为空');
+                return;
+            }
+            
+            const result = await window.hostsAPI.executeSudoCommand(command);
+            alert(`命令执行成功！\n输出: ${result.stdout}\n错误: ${result.stderr}`);
+        } catch (error) {
+            console.error('命令执行出错:', error);
+            alert(`命令执行失败: ${error}`);
+        }
     });
 
     // 新增 saveHosts 函数
@@ -40,4 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+    
+    // 添加调试信息
+    console.log('DOMContentLoaded完成');
+    console.log('获取到的debug按钮:', debugButton);
 });

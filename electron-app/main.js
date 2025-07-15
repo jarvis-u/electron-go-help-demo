@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const net = require('net')
 const sudo = require('sudo-prompt')
@@ -21,11 +21,46 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow()
-
+  
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+  
+  // 添加命令输入对话框处理器
+  ipcMain.handle('open-command-dialog', async (event) => {
+    console.log("打开命令输入对话框")
+    
+    return new Promise((resolve) => {
+      const dialogWindow = new BrowserWindow({
+        width: 400,
+        height: 250,
+        parent: mainWindow,
+        modal: true,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false
+        }
+      })
+      
+      dialogWindow.loadFile('command-dialog.html')
+      
+      // 监听对话框响应
+      ipcMain.once('command-dialog-response', (event, command) => {
+        resolve(command)
+        dialogWindow.close()
+      })
+      
+      // 对话框关闭时返回null
+      dialogWindow.on('closed', () => {
+        if (!dialogWindow.isDestroyed()) {
+          resolve(null)
+        }
+      })
+    })
+  })
 })
+
+// 删除重复的app.whenReady回调
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit()
@@ -79,6 +114,93 @@ ipcMain.handle('append-to-hosts', async (event, content) => {
     client.on('error', (err) => {
       console.error("append-to-hosts请求出错:", err)
       reject(err)
+    })
+  })
+})
+
+// 注册install-service IPC处理器
+ipcMain.handle('install-service', async () => {
+  return installService();
+});
+
+// 新增sudo命令执行处理器（通过特权助手服务）
+ipcMain.handle('sudo-command', async (event, command) => {
+  console.log("执行特权命令:", command);
+  
+  const serviceInstalled = await checkServiceInstallation()
+  if (!serviceInstalled) {
+    console.log("服务未安装，触发安装流程")
+    const installResult = await installService()
+    if (!installResult.success) {
+      throw new Error('服务安装失败')
+    }
+    
+    // 服务安装后需要时间启动，增加重试次数和间隔
+    let serviceReady = false;
+    for (let i = 0; i < 10; i++) { // 增加到10次重试
+      await new Promise(resolve => setTimeout(resolve, 1000)); // 增加到1秒间隔
+      serviceReady = await checkServiceInstallation();
+      if (serviceReady) break;
+      console.log(`服务启动中... 重试 ${i+1}/10`);
+    }
+    
+    if (!serviceReady) {
+      throw new Error('服务安装后启动失败');
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const client = net.createConnection(SOCKET_PATH, () => {
+      console.log("连接到服务执行命令")
+      
+      // 发送操作码'c'表示执行命令
+      client.write('c')
+      
+      // 发送命令长度
+      const lenBuf = Buffer.alloc(4)
+      lenBuf.writeUInt32BE(command.length)
+      client.write(lenBuf)
+      
+      // 发送命令内容
+      client.write(command)
+    })
+
+    let resultBuffer = Buffer.alloc(0)
+    let resultLength = -1
+    
+    client.on('data', (data) => {
+      resultBuffer = Buffer.concat([resultBuffer, data])
+      
+      // 循环处理直到没有足够数据
+      while (true) {
+        // 如果结果长度未知，但缓冲区有足够数据读取长度
+        if (resultLength === -1 && resultBuffer.length >= 4) {
+          resultLength = resultBuffer.readUInt32BE(0)
+          resultBuffer = resultBuffer.slice(4)
+        }
+        
+        // 如果已知长度且有足够数据读取结果
+        if (resultLength !== -1 && resultBuffer.length >= resultLength) {
+          const result = resultBuffer.slice(0, resultLength).toString()
+          resolve({ stdout: result, stderr: '' })
+          client.end()
+          return
+        }
+        
+        // 如果没有足够数据，等待更多数据
+        break;
+      }
+    })
+
+    client.on('error', (err) => {
+      console.error("命令执行出错:", err)
+      reject(err)
+    })
+    
+    client.on('end', () => {
+      if (resultLength === -1) {
+        reject(new Error('命令执行未返回结果'))
+      }
     })
   })
 })
