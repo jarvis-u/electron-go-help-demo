@@ -14,18 +14,18 @@ import (
 	"time"
 )
 
-const socketPath = "/var/run/com.example.hostshelper.sock"
+const socketPath = "/var/run/com.example.ktctlhelper.sock"
 
 const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.example.hostshelper</string>
+    <string>com.example.ktctlhelper</string>
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/hosts-helper</string>
+        <string>/usr/local/bin/ktctl-helper</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -35,17 +35,17 @@ const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/var/log/hosts-helper.log</string>
+    <string>/var/log/ktctl-helper.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/var/log/hosts-helper-error.log</string>
+    <string>/var/log/ktctl-helper-error.log</string>
 
     <key>Sockets</key>
     <dict>
         <key>HostsHelperSocket</key>
         <dict>
             <key>SockPathName</key>
-            <string>/var/run/com.example.hostshelper.sock</string>
+            <string>/var/run/com.example.ktctlhelper.sock</string>
             <key>SockPathMode</key>
             <integer>384</integer> <!-- 0600 permissions in decimal -->
         </dict>
@@ -142,29 +142,6 @@ func handleRequest(conn net.Conn) {
 	}
 
 	switch buf[0] {
-	case 'u':
-		lenBuf := make([]byte, 4)
-		conn.Read(lenBuf)
-		length := binary.BigEndian.Uint32(lenBuf)
-
-		content := make([]byte, length)
-		conn.Read(content)
-
-		f, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0644)
-		if err != nil {
-			fmt.Printf("打开hosts文件失败: %v\n", err)
-			return
-		}
-		defer f.Close()
-
-		if len(content) > 0 && content[0] != '\n' {
-			f.WriteString("\n")
-		}
-
-		if _, err = f.Write(content); err != nil {
-			fmt.Printf("追加hosts内容失败: %v\n", err)
-		}
-
 	case 'c':
 		lenBuf := make([]byte, 4)
 		conn.Read(lenBuf)
@@ -284,7 +261,7 @@ func installService() error {
 		return fmt.Errorf("获取可执行文件路径失败: %w", err)
 	}
 
-	targetPath := "/usr/local/bin/hosts-helper"
+	targetPath := "/usr/local/bin/ktctl-helper"
 	if err := copyFile(exePath, targetPath); err != nil {
 		return fmt.Errorf("复制文件失败: %w", err)
 	}

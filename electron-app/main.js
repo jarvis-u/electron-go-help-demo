@@ -3,7 +3,7 @@ const path = require('path')
 const net = require('net')
 const sudo = require('sudo-prompt')
 
-const SOCKET_PATH = '/var/run/com.example.hostshelper.sock'
+const SOCKET_PATH = '/var/run/com.example.ktctlhelper.sock'
 let mainWindow
 
 function createWindow() {
@@ -52,9 +52,7 @@ app.whenReady().then(() => {
       
       // 对话框关闭时返回null
       dialogWindow.on('closed', () => {
-        if (!dialogWindow.isDestroyed()) {
-          resolve(null)
-        }
+        resolve(null)
       })
     })
   })
@@ -65,60 +63,6 @@ app.on('window-all-closed', function () {
 })
 
 console.log("注册IPC处理器")
-
-ipcMain.handle('append-to-hosts', async (event, content) => {
-  console.log("处理append-to-hosts请求")
-  
-  const serviceInstalled = await checkServiceInstallation()
-  if (!serviceInstalled) {
-    console.log("服务未安装，触发安装流程")
-    const installResult = await installService()
-    if (!installResult.success) {
-      throw new Error('服务安装失败')
-    }
-
-    let serviceReady = false;
-    for (let i = 0; i < 5; i++) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      serviceReady = await checkServiceInstallation();
-      if (serviceReady) break;
-      console.log(`服务启动中... 重试 ${i+1}/5`);
-    }
-    
-    if (!serviceReady) {
-      throw new Error('服务安装后启动失败');
-    }
-  }
-
-  return new Promise((resolve, reject) => {
-    const client = net.createConnection(SOCKET_PATH, () => {
-      console.log("连接到服务")
-      client.write('u')
-      
-      const lenBuf = Buffer.alloc(4)
-      lenBuf.writeUInt32BE(content.length)
-      client.write(lenBuf)
-      
-      client.write(content)
-    })
-
-    client.on('data', (data) => {
-      console.log("追加成功确认")
-      resolve()
-      client.end()
-    })
-
-    client.on('error', (err) => {
-      console.error("append-to-hosts请求出错:", err)
-      reject(err)
-    })
-  })
-})
-
-// 注册install-service IPC处理器
-ipcMain.handle('install-service', async () => {
-  return installService();
-});
 
 // 新增停止调试命令处理器
 ipcMain.handle('stop-debug', async () => {
@@ -241,7 +185,7 @@ function checkServiceInstallation() {
 
 function installService() {
   return new Promise((resolve) => {
-    const helperPath = path.join(__dirname, 'hosts-helper');
+    const helperPath = path.join(__dirname, 'ktctl-helper');
     console.log("执行安装命令");
     console.log("Helper路径:", helperPath);
     

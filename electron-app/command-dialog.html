@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>输入调试命令</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+            text-align: center;
+        }
+        .container {
+            background-color: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            resize: none;
+            font-family: monospace;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.cancel {
+            background-color: #6c757d;
+        }
+        button.cancel:hover {
+            background-color: #5a6268;
+        }
+        #stop-btn {
+            background-color: #d9534f;
+        }
+        #stop-btn:hover {
+            background-color: #c9302c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>输入调试命令</h2>
+        <textarea id="command-input" placeholder="请输入要执行的命令"></textarea>
+        <div>
+            <button id="submit-btn">执行命令</button>
+            <button id="cancel-btn" class="cancel">取消</button>
+        </div>
+    </div>
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        document.getElementById('submit-btn').addEventListener('click', () => {
+            const command = document.getElementById('command-input').value.trim();
+            if (command) {
+                ipcRenderer.send('command-dialog-response', command);
+            }
+            window.close();
+        });
+        
+        document.getElementById('stop-btn').addEventListener('click', () => {
+            ipcRenderer.invoke('stop-debug').then(result => {
+                alert(result);
+            }).catch(err => {
+                alert('结束调试失败: ' + err.message);
+            });
+        });
+
+        document.getElementById('cancel-btn').addEventListener('click', () => {
+            window.close();
+        });
+    </script>
+</body>
+</html>

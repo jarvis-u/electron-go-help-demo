@@ -1,8 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('hostsAPI', {
-  installService: () => ipcRenderer.invoke('install-service'),
-  appendToHostsFile: (content) => ipcRenderer.invoke('append-to-hosts', content),
   executeSudoCommand: (command) => ipcRenderer.invoke('sudo-command', command),
   openCommandDialog: () => ipcRenderer.invoke('open-command-dialog'),
   stopDebug: () => ipcRenderer.invoke('stop-debug')
