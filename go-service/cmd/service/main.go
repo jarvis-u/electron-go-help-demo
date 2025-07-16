@@ -62,6 +62,8 @@ const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
 </dict>
 </plist>`
 
+var lastCmdPID int
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "install" {
 		fmt.Println("服务开始安装")
@@ -240,6 +242,8 @@ func handleRequest(conn net.Conn) {
 			}
 		}()
 
+		lastCmdPID = cmd.Process.Pid
+
 		fmt.Printf("命令已启动 PID: %d, 日志: %s\n", cmd.Process.Pid, logPath)
 
 		response := fmt.Sprintf("命令已在后台运行 (PID: %d)\n日志文件: %s", cmd.Process.Pid, logPath)
@@ -247,6 +251,30 @@ func handleRequest(conn net.Conn) {
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(response)))
 		conn.Write(lenBuf)
 		conn.Write([]byte(response))
+
+	case 'd':
+		if lastCmdPID == 0 {
+			conn.Write([]byte("没有正在运行的后台进程"))
+			return
+		}
+
+		process, err := os.FindProcess(lastCmdPID)
+		if err != nil {
+			response := fmt.Sprintf("找不到进程 %d: %v", lastCmdPID, err)
+			conn.Write([]byte(response))
+			return
+		}
+
+		if err := process.Signal(syscall.SIGTERM); err != nil {
+			response := fmt.Sprintf("发送终止信号失败: %v", err)
+			conn.Write([]byte(response))
+			return
+		}
+
+		response := fmt.Sprintf("已发送终止信号到进程 %d", lastCmdPID)
+		conn.Write([]byte(response))
+		lastCmdPID = 0 // 重置PID
+
 	}
 }
 

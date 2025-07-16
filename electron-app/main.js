@@ -31,14 +31,15 @@ app.whenReady().then(() => {
     
     return new Promise((resolve) => {
       const dialogWindow = new BrowserWindow({
-        width: 400,
-        height: 250,
-        parent: mainWindow,
-        modal: true,
-        webPreferences: {
-          nodeIntegration: true,
-          contextIsolation: false
-        }
+          width: 500,
+          height: 350,
+          parent: mainWindow,
+          modal: true,
+          webPreferences: {
+              preload: path.join(__dirname, 'preload.js'),
+              nodeIntegration: true,
+              contextIsolation: false
+          }
       })
       
       dialogWindow.loadFile('command-dialog.html')
@@ -118,6 +119,29 @@ ipcMain.handle('append-to-hosts', async (event, content) => {
 ipcMain.handle('install-service', async () => {
   return installService();
 });
+
+// 新增停止调试命令处理器
+ipcMain.handle('stop-debug', async () => {
+  console.log("停止调试命令请求");
+  
+  return new Promise((resolve, reject) => {
+    const client = net.createConnection(SOCKET_PATH, () => {
+      console.log("连接到服务，发送停止调试命令");
+      client.write('d') // 发送停止调试命令
+    })
+
+    client.on('data', (data) => {
+      console.log("停止调试结果:", data.toString())
+      resolve(data.toString())
+      client.end()
+    })
+
+    client.on('error', (err) => {
+      console.error("停止调试出错:", err)
+      reject(err)
+    })
+  })
+})
 
 // 新增sudo命令执行处理器（通过特权助手服务）
 ipcMain.handle('sudo-command', async (event, command) => {

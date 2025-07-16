@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hostsTextarea = document.getElementById('hosts-content');
     const saveButton = document.getElementById('save-button');
     const debugButton = document.getElementById('debug-button');
+    const endButton = document.getElementById('end-button')
 
     hostsTextarea.value = '';
     hostsTextarea.placeholder = '输入要追加到/etc/hosts的内容';
