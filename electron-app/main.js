@@ -3,7 +3,7 @@ const path = require('path')
 const net = require('net')
 const sudo = require('sudo-prompt')
 
-const SOCKET_PATH = '/var/run/com.example.ktctlhelper.sock'
+const SOCKET_PATH = '/var/run/com.shouqianba.ktctl.sock'
 let mainWindow
 
 function createWindow() {
@@ -63,31 +63,53 @@ app.on('window-all-closed', function () {
 })
 
 console.log("注册IPC处理器")
-
-// 新增停止调试命令处理器
 ipcMain.handle('stop-debug', async () => {
   console.log("停止调试命令请求");
   
   return new Promise((resolve, reject) => {
     const client = net.createConnection(SOCKET_PATH, () => {
       console.log("连接到服务，发送停止调试命令");
-      client.write('d') // 发送停止调试命令
-    })
+      
+      const request = {
+        jsonrpc: "2.0",
+        method: "HelperRPC.EndDebug",
+        params: [],  // 空数组
+        id: Date.now()
+      };
+      const requestStr = JSON.stringify(request) + '\n';
+      console.log("发送JSON-RPC请求:", requestStr);
+      client.write(requestStr);
+    });
 
+    let responseData = '';
     client.on('data', (data) => {
-      console.log("停止调试结果:", data.toString())
-      resolve(data.toString())
-      client.end()
-    })
+      responseData += data.toString();
+      if (responseData.includes('\n')) {
+        try {
+          const response = JSON.parse(responseData.split('\n')[0]);
+          if (response.jsonrpc === "2.0") {
+            if (response.error) {
+              reject(new Error(response.error.message));
+            } else {
+              resolve(response.result);
+            }
+          }
+        } catch (e) {
+          reject(e);
+        } finally {
+          client.end();
+        }
+      }
+    });
 
     client.on('error', (err) => {
-      console.error("停止调试出错:", err)
-      reject(err)
-    })
-  })
+      console.error("停止调试出错:", err);
+      reject(err);
+    });
+  });
 })
 
-// 新增sudo命令执行处理器（通过特权助手服务）
+// 修改为JSON-RPC协议：特权命令执行处理器
 ipcMain.handle('sudo-command', async (event, command) => {
   console.log("执行特权命令:", command);
   
@@ -114,55 +136,52 @@ ipcMain.handle('sudo-command', async (event, command) => {
 
   return new Promise((resolve, reject) => {
     const client = net.createConnection(SOCKET_PATH, () => {
-      console.log("连接到服务执行命令")
+      console.log("连接到服务执行命令");
       
-      // 发送操作码'c'表示执行命令
-      client.write('c')
-      
-      // 发送命令长度
-      const lenBuf = Buffer.alloc(4)
-      lenBuf.writeUInt32BE(command.length)
-      client.write(lenBuf)
-      
-      // 发送命令内容
-      client.write(command)
-    })
+      const request = {
+        jsonrpc: "2.0",
+        method: "HelperRPC.StartDebug",
+        params: [{ Command: command }],  // 命令字符串作为数组元素
+        id: Date.now()
+      };
+      const requestStr = JSON.stringify(request);
+      console.log("发送JSON-RPC请求:", requestStr);
+      client.write(requestStr);
+    });
 
-    let resultBuffer = Buffer.alloc(0)
-    let resultLength = -1
-    
+    let responseData = '';
     client.on('data', (data) => {
-      resultBuffer = Buffer.concat([resultBuffer, data])
-      
-
-      while (true) {
-        if (resultLength === -1 && resultBuffer.length >= 4) {
-          resultLength = resultBuffer.readUInt32BE(0)
-          resultBuffer = resultBuffer.slice(4)
+      responseData += data.toString();
+      if (responseData.includes('\n')) {
+        try {
+          const response = JSON.parse(responseData.split('\n')[0]);
+          console.log("收到JSON-RPC响应:", response);
+          // if (response.jsonrpc === "2.0") {
+          //   if (response.error) {
+          //     reject(new Error(response.error.message));
+          //   } else {
+          //     resolve({
+          //       stdout: response.result,
+          //       stderr: ''
+          //     });
+          //   }
+          // } else {
+          //   console.error("无效的JSON-RPC响应:", response);
+          //   reject(new Error("Invalid JSON-RPC response"));
+          // }
+        } catch (e) {
+          reject(e);
+        } finally {
+          client.end();
         }
-
-        if (resultLength !== -1 && resultBuffer.length >= resultLength) {
-          const result = resultBuffer.slice(0, resultLength).toString()
-          resolve({ stdout: result, stderr: '' })
-          client.end()
-          return
-        }
-
-        break;
       }
-    })
+    });
 
     client.on('error', (err) => {
-      console.error("命令执行出错:", err)
-      reject(err)
-    })
-    
-    client.on('end', () => {
-      if (resultLength === -1) {
-        reject(new Error('命令执行未返回结果'))
-      }
-    })
-  })
+      console.error("命令执行出错:", err);
+      reject(err);
+    });
+  });
 })
 
 function checkServiceInstallation() {
@@ -195,7 +214,7 @@ function installService() {
       env: { PATH: process.env.PATH }
     };
     
-    const command = `"${helperPath}" install`;
+    const command = `"${helperPath}" -install`;
     console.log("执行命令:", command);
     
     sudo.exec(command, options, (error, stdout, stderr) => {
