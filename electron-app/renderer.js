@@ -9,21 +9,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     debugButton.addEventListener('click', async () => {
         console.log('本地调试按钮点击');
-        
+
         try {
             const command = await window.hostsAPI.openCommandDialog();
             if (!command) {
                 console.log('用户取消了命令输入');
                 return;
             }
-            
+
             if (!command.trim()) {
                 alert('命令不能为空');
                 return;
             }
-            
+
             const result = await window.hostsAPI.executeSudoCommand(command);
-            alert(`命令执行成功！\n输出: ${result.stdout}\n错误: ${result.stderr}`);
+            alert(result);
         } catch (error) {
             console.error('命令执行出错:', error);
             alert(`命令执行失败: ${error}`);
